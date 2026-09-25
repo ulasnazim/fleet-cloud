@@ -23,6 +23,7 @@ static and secret checks.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import subprocess
@@ -44,6 +45,13 @@ REQUIRED_FILES = [
     "ops/nginx/files.nazimlaw.com.conf",
     "scripts/export-shareable-files.sh",
     "docs/RUNBOOK-opencloud.md",
+    # Vendored upstream Traccar source snapshots (issue #11).
+    "scripts/check-vendored-sources.py",
+    "vendor/README.md",
+    "vendor/traccar-server.sha256",
+    "vendor/traccar-web.sha256",
+    "vendor/traccar-server/LICENSE.txt",
+    "vendor/traccar-web/LICENSE.txt",
 ]
 
 # High-signal credential patterns. Deliberately narrow to avoid noise.
@@ -169,6 +177,33 @@ def check_runbook_session_expectation() -> None:
             "runbook Session/API expectation no longer claims HTTP 200/401")
     require("curl -sS" in row and "-fsS" not in row,
             "runbook Session/API command uses curl -sS so a 404 is reported, not treated as failure")
+
+
+def check_vendored_sources() -> None:
+    """Verify the vendored upstream Traccar snapshots against their manifests.
+
+    Delegates to ``scripts/check-vendored-sources.py`` so the integrity logic
+    has a single implementation (issue #11).
+    """
+    spec = importlib.util.spec_from_file_location(
+        "check_vendored_sources",
+        Path(__file__).resolve().parent / "check-vendored-sources.py",
+    )
+    if spec is None or spec.loader is None:
+        fail("could not load scripts/check-vendored-sources.py")
+        return
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module  # dataclasses resolve the module by name
+    spec.loader.exec_module(module)
+    problems = module.run()
+    if problems:
+        for problem in problems:
+            fail(f"vendored sources: {problem}")
+    else:
+        ok(
+            "vendored Traccar source snapshots match their recorded manifests "
+            f"({len(module.SOURCES)} snapshots)"
+        )
 
 
 def check_secret_scan() -> None:
@@ -462,6 +497,7 @@ def main() -> int:
     check_opencloud_env_example()
     check_opencloud_nginx()
     check_opencloud_runbook()
+    check_vendored_sources()
     check_secret_scan()
     if args.compose_json:
         check_compose_json(args.compose_json)
