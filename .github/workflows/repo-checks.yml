@@ -1,0 +1,40 @@
+name: Repository checks
+
+# Least-privilege CI: read-only repository access, no secrets, no deployment.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-artifacts:
+    name: deployment-artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Static checks and secret scan
+        run: python3 scripts/check-deployment-artifacts.py
+
+      - name: Validate the rendered Docker Compose configuration
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env.example -f compose.yaml config --format json \
+            > "${RUNNER_TEMP}/compose.json"
+          python3 scripts/check-deployment-artifacts.py --compose-json "${RUNNER_TEMP}/compose.json"
+
+      - name: Check for whitespace errors in the change
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+          else
+            base="HEAD~1"
+          fi
+          git diff --check "${base}...HEAD"

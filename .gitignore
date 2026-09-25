@@ -1,0 +1,18 @@
+# Runtime secrets and deployment-only files (never commit)
+.env
+.env.*
+!.env.example
+*.env
+!.env.example
+
+# Local runtime data / logs, if ever bind-mounted into the working tree
+data/
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Agent scratch
+.openclaw/
