@@ -30,7 +30,11 @@ ops/nginx/fleet.nazimlaw.com.conf         Nginx origin site template (tracking)
 ops/nginx/files.nazimlaw.com.conf         Nginx origin site template (file sharing)
 ops/traccar/traccar.xml.template          optional XML config reference
 scripts/check-deployment-artifacts.py     deterministic deployment checks
+scripts/check-vendored-sources.py          vendored-source integrity check
 scripts/export-shareable-files.sh         secrets-free tracked-file export
+vendor/traccar-server/                     upstream Traccar server source v6.15.3 (Apache-2.0)
+vendor/traccar-web/                        upstream Traccar web client source v6.15.3 (Apache-2.0)
+vendor/README.md                           vendored-source provenance, exclusions, refresh steps
 docs/adr/                                 architecture decision records
 docs/RUNBOOK.md                           deploy / health / upgrade / rollback (tracking)
 docs/RUNBOOK-opencloud.md                 deploy / accounts / Space / rollback (file sharing)
@@ -46,6 +50,23 @@ python3 scripts/check-deployment-artifacts.py
 
 These are the same deterministic checks CI runs. They need no secrets and no
 running containers.
+
+## Vendored upstream source
+
+For direct browsing on GitHub, the **unmodified** upstream Traccar source for
+server and web client is vendored as normal tracked files (no submodules) under
+`vendor/`, with provenance, licenses, exclusions and a deterministic refresh
+procedure documented in `vendor/README.md`. Source is pinned to tag `v6.15.3`:
+
+| Snapshot | Upstream | Commit |
+|---|---|---|
+| `vendor/traccar-server/` | `traccar/traccar` | `5eb957893c22b988f831200e976b36262d2b8592` |
+| `vendor/traccar-web/` | `traccar/traccar-web` | `cfedd3415415623ddbeb74ed6fe6238f3f7a47e0` |
+
+These snapshots are reference source only — they are not built and do not
+change the deployed pinned image. Integrity is checked deterministically by
+`scripts/check-vendored-sources.py` (also run from the deployment artifact
+checks and CI).
 
 ## File sharing (OpenCloud)
 
