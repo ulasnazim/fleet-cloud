@@ -4,7 +4,8 @@
 Runs two kinds of checks:
 
   1. Static checks over tracked files (compose.yaml, .env.example, .gitignore,
-     ops/nginx/fleet.nazimlaw.com.conf, ops/traccar/traccar.xml.template).
+     ops/nginx/fleet.nazimlaw.com.conf, ops/traccar/traccar.xml.template,
+     docs/RUNBOOK.md).
   2. A high-signal secret scan over every git-tracked text file, plus a check
      that no runtime secret file (.env) is tracked.
 
@@ -143,6 +144,27 @@ def check_nginx() -> None:
     require(text.count("{") == text.count("}"), "nginx template braces are balanced")
 
 
+def check_runbook_session_expectation() -> None:
+    """The Session/API smoke row must document the verified Traccar 6.15.3
+    unauthenticated response (HTTP 404) so the expectation cannot silently
+    regress. See issue #5."""
+    text = (REPO_ROOT / "docs/RUNBOOK.md").read_text(encoding="utf-8")
+    row = next(
+        (line for line in text.splitlines() if line.startswith("|") and "Session/API" in line),
+        None,
+    )
+    require(row is not None, "runbook documents the Session/API smoke check")
+    if row is None:
+        return
+    require("/api/session" in row, "runbook Session/API row targets /api/session")
+    require("404" in row,
+            "runbook Session/API expectation is the verified unauthenticated HTTP 404")
+    require("200" not in row and "401" not in row,
+            "runbook Session/API expectation no longer claims HTTP 200/401")
+    require("curl -sS" in row and "-fsS" not in row,
+            "runbook Session/API command uses curl -sS so a 404 is reported, not treated as failure")
+
+
 def check_secret_scan() -> None:
     scanned = 0
     for rel in git_tracked_files():
@@ -251,6 +273,7 @@ def main() -> int:
     check_env_example()
     check_gitignore()
     check_nginx()
+    check_runbook_session_expectation()
     check_secret_scan()
     if args.compose_json:
         check_compose_json(args.compose_json)

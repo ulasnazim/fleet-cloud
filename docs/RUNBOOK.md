@@ -121,12 +121,28 @@ dynamically.
 | Check | Command | Expected |
 |---|---|---|
 | Web/API | `curl -fsS http://127.0.0.1:8082/api/health` | JSON health payload, HTTP 200 |
-| Session/API | `curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8082/api/session` | HTTP 200 (or 401 — endpoint responding) |
+| Session/API | `curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8082/api/session` | HTTP 404 — verified unauthenticated response on Traccar 6.15.3 |
 | Public HTTPS | `curl -fsSI https://fleet.nazimlaw.com/` | HTTP 200/302 over TLS |
 | Containers | `docker compose --env-file /srv/fleet-cloud/.env -f compose.yaml ps` | both `healthy` |
 
 The Traccar container health check uses the transport available in the alpine
 image: `wget -q --spider http://127.0.0.1:8082/api/health`.
+
+### Session/API check semantics
+
+On the deployed revision `b4f5c1c`, the unauthenticated
+`GET http://127.0.0.1:8082/api/session` returns **HTTP 404**, not 200 or 401.
+This is the verified Traccar 6.15.3 behaviour, so the smoke check accepts 404.
+Use `curl -sS` (not `-fsS`) so the status code is always reported — `-f` makes
+curl exit non-zero on any 4xx/5xx and would turn the expected 404 into a
+spurious command failure.
+
+What it proves: the check passes when the request returns **any** HTTP status
+rather than a connection error. A structured 404 (or 200/401) means Traccar's
+HTTP API router is up and answering on the loopback port; a connection refused
+timeout or reset instead means the container is not serving. Authenticated
+administrator access to `/api/*` remains the check that the API works for a
+logged-in user; this row only asserts the endpoint is reachable and responding.
 
 ## 6. Logs
 
