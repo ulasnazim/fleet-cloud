@@ -202,6 +202,8 @@ def check_opencloud_static() -> None:
             "OpenCloud image pinned to opencloudeu/opencloud:7.2.4")
     require("127.0.0.1:9200:9200" in text,
             "OpenCloud proxy port binds to 127.0.0.1:9200")
+    require('files.nazimlaw.com:host-gateway' in text,
+            "OpenCloud resolves its OIDC issuer through the host Nginx origin")
     require('IDM_CREATE_DEMO_USERS: "false"' in text,
             "opencloud compose disables demo users")
     require('PROXY_TLS: "false"' in text,
@@ -321,6 +323,13 @@ def check_opencloud_compose_json(compose_json_path: str) -> None:
             "opencloud published ports bind to 127.0.0.1 only")
     require(any(str(target) == "9200" for _, _, target in published),
             "opencloud publishes the proxy port 9200")
+
+    extra_hosts = svc.get("extra_hosts") or []
+    if isinstance(extra_hosts, dict):
+        extra_hosts = [f"{key}={value}" for key, value in extra_hosts.items()]
+    normalized_hosts = {str(item).replace(":", "=", 1) for item in extra_hosts}
+    require(normalized_hosts == {"files.nazimlaw.com=host-gateway"},
+            "opencloud has exactly the OIDC issuer host-gateway mapping")
 
     mounts = svc.get("volumes", []) or []
     targets = {m.get("target") for m in mounts}

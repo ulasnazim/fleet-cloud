@@ -78,6 +78,11 @@ services:
       # OpenCloud proxy on host loopback only. Public access is HTTPS via
       # Nginx/Cloudflare; no internal service port is ever published.
       - "127.0.0.1:9200:9200"
+    extra_hosts:
+      # OpenCloud verifies its own OIDC issuer over HTTPS. Resolve the public
+      # hostname to the host Nginx origin so login does not depend on external
+      # DNS propagation and does not hairpin through Cloudflare.
+      - "files.nazimlaw.com:host-gateway"
     volumes:
       # Dedicated named volumes — never host paths from the Traccar stack.
       - opencloud-config:/etc/opencloud
