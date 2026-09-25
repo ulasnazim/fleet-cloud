@@ -1,0 +1,121 @@
+# fleet-cloud-opencloud — isolated OpenCloud file-sharing stack (issue #7).
+#
+# Documentation: docs/RUNBOOK-opencloud.md
+# Decisions:     docs/adr/0003-opencloud-file-sharing.md
+#
+# Rules enforced by this file and by scripts/check-deployment-artifacts.py:
+#   * the image is pinned to an immutable released tag — never `latest`,
+#     `rolling` or `daily`;
+#   * runtime secrets come from a root-owned deployment file
+#     (default /srv/fleet-cloud-opencloud/.env) supplied via `--env-file`;
+#     nothing secret is committed here (see .env.example);
+#   * the OpenCloud proxy port binds to host loopback only and is fronted by
+#     Nginx (ops/nginx/files.nazimlaw.com.conf);
+#   * public self-registration, demo users and anonymous/public-link sharing
+#     are disabled (internal identity, password-protected links only);
+#   * every persistent path is a dedicated named volume — the live
+#     Traccar deployment tree is never mounted here.
+#
+# This stack is a separate Compose project with its own directory, network,
+# volumes and secrets; it never shares state with the `fleet-cloud` project.
+name: fleet-cloud-opencloud
+
+services:
+  opencloud:
+    # Released, non-floating OpenCloud production tag (published 2026-08-21).
+    # Do not switch to the rolling OpenCloud image family.
+    image: opencloudeu/opencloud:7.2.4
+    restart: unless-stopped
+    # Run as an unprivileged uid:gid; Docker initialises the named volumes
+    # from the image, which already owns /etc/opencloud and /var/lib/opencloud.
+    user: "1000:1000"
+    # Upstream entrypoint: initialise config with random internal secrets on
+    # first run (idempotent — ignored on later starts), then start the server.
+    entrypoint:
+      - /bin/sh
+    command:
+      - -c
+      - opencloud init || true; opencloud server
+    environment:
+      # --- Public URL (TLS is terminated by Nginx) ---
+      OC_URL: ${OPENCLOUD_URL:?set OPENCLOUD_URL in /srv/fleet-cloud-opencloud/.env}
+      OC_LOG_LEVEL: ${OPENCLOUD_LOG_LEVEL:-info}
+      # Do not use TLS between Nginx and OpenCloud.
+      PROXY_TLS: "false"
+      # No self-signed certificates are in play, so no insecure mode.
+      OC_INSECURE: "false"
+      # WebDAV basic auth is not needed for the browser/desktop use case.
+      PROXY_ENABLE_BASIC_AUTH: "false"
+      # Local identity only: no demo users, no external IDP/Keycloak.
+      IDM_CREATE_DEMO_USERS: "false"
+      # Initial password for the built-in `admin` user. Supplied at runtime
+      # from the root-owned deployment file; rotate it at first login.
+      IDM_ADMIN_PASSWORD: ${OPENCLOUD_ADMIN_PASSWORD:?set OPENCLOUD_ADMIN_PASSWORD in /srv/fleet-cloud-opencloud/.env}
+
+      # --- Sharing hardening ---
+      # New links default to internal (members-only) rather than public.
+      FRONTEND_DEFAULT_LINK_PERMISSIONS: "0"
+      # Any public link that is created must be password protected, for both
+      # read-only and writable links. Combined with the internal default and
+      # no anonymous/guest accounts, anonymous public sharing is unavailable.
+      OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD: "true"
+      OC_SHARING_PUBLIC_WRITEABLE_SHARE_MUST_HAVE_PASSWORD: "true"
+
+      # --- Password policy (applies to public-link passwords) ---
+      OC_PASSWORD_POLICY_DISABLED: "false"
+      OC_PASSWORD_POLICY_MIN_CHARACTERS: "12"
+      OC_PASSWORD_POLICY_MIN_LOWERCASE_CHARACTERS: "1"
+      OC_PASSWORD_POLICY_MIN_UPPERCASE_CHARACTERS: "1"
+      OC_PASSWORD_POLICY_MIN_DIGITS: "1"
+      OC_PASSWORD_POLICY_MIN_SPECIAL_CHARACTERS: "1"
+
+      OC_DEFAULT_LANGUAGE: en
+      TZ: UTC
+    ports:
+      # OpenCloud proxy on host loopback only. Public access is HTTPS via
+      # Nginx/Cloudflare; no internal service port is ever published.
+      - "127.0.0.1:9200:9200"
+    volumes:
+      # Dedicated named volumes — never host paths from the Traccar stack.
+      - opencloud-config:/etc/opencloud
+      - opencloud-data:/var/lib/opencloud
+    networks:
+      - internal
+    healthcheck:
+      # /status.php is an unauthenticated readiness endpoint on the proxy.
+      test:
+        - CMD
+        - curl
+        - -fsS
+        - http://127.0.0.1:9200/status.php
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2g
+          pids: 512
+
+networks:
+  internal:
+    name: fleet-cloud-opencloud-net
+    driver: bridge
+    driver_opts:
+      # Any port published on this network defaults to host loopback.
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+
+volumes:
+  opencloud-config:
+    name: fleet-cloud-opencloud-config
+  opencloud-data:
+    name: fleet-cloud-opencloud-data
