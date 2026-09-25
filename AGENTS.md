@@ -35,12 +35,14 @@ Verified locally on 2026-09-25 (Docker Compose v2, Python 3):
 - Lint + format: none configured; CI runs `git diff --check` for whitespace.
 - Build: n/a (images are pulled, not built).
 - Smoke test: `docker compose --env-file .env.example -f compose.yaml config` → success and `python3 scripts/check-deployment-artifacts.py` → all checks pass. OpenCloud: `docker compose --env-file ops/opencloud/.env.example -f ops/opencloud/compose.yaml config` → success.
+- Source integrity: `python3 scripts/check-vendored-sources.py` → every vendored Traccar snapshot matches its committed `*.sha256` manifest.
 - Deploy-validation: `docker compose --env-file /srv/fleet-cloud/.env -f compose.yaml config -q` on the VPS, and `docker compose --env-file /srv/fleet-cloud-opencloud/.env -f ops/opencloud/compose.yaml config -q` for OpenCloud.
 
 ## Repository map
 - Entry point: `compose.yaml` (Traccar + MySQL stack, project `fleet-cloud`); `ops/opencloud/compose.yaml` (OpenCloud stack, project `fleet-cloud-opencloud`). · Business logic: TODO(owner) — no product code yet. · Data access and migrations: Traccar-owned (upstream Liquibase migrations run on start); OpenCloud-owned (upstream migrations on start). · Tests: `scripts/check-deployment-artifacts.py` + `.github/workflows/repo-checks.yml`.
 - Edge config: `ops/nginx/fleet.nazimlaw.com.conf`, `ops/nginx/files.nazimlaw.com.conf`. · Traccar config reference: `ops/traccar/traccar.xml.template`. · Runtime config templates: `.env.example`, `ops/opencloud/.env.example`. · Secrets-free export: `scripts/export-shareable-files.sh`.
 - Plans `docs/plans/` · ADRs `docs/adr/` · Runbooks `docs/RUNBOOK.md`, `docs/RUNBOOK-opencloud.md`.
+- Vendored upstream source: `vendor/traccar-server/` and `vendor/traccar-web/` hold the unmodified Traccar 6.15.3 server and web source (Apache-2.0, imported as normal tracked files — no submodules). Provenance, exclusions and the refresh procedure are in `vendor/README.md`; integrity is verified by `scripts/check-vendored-sources.py`.
 
 ## Architecture rules
 - Traccar is an **unmodified upstream dependency** (pinned image). Do not patch its internals.
@@ -69,6 +71,7 @@ TODO(owner): document reversible deletion, change/bulk-change audit with actor a
 - No tracker protocol port range (5000–5300) may be published by default.
 - Secrets MUST NOT be committed; only the non-secret `.env.example` and `ops/opencloud/.env.example` are tracked.
 - `scripts/check-deployment-artifacts.py` and CI MUST pass before merge; CI uses least privilege (`contents: read`).
+- Vendored source under `vendor/` MUST stay byte-for-byte identical to its recorded upstream tag/commit; it is reference source only, MUST NOT be built or imported into the running deployment, MUST NOT use submodules, and MUST keep its upstream license/notice files. Update it only via the documented refresh procedure in `vendor/README.md`, and regenerate the `*.sha256` manifests so `scripts/check-vendored-sources.py` passes.
 
 ## Material human decisions and exceptions (if any)
 | Default | Decision and likely consequence | Human | Scope |
