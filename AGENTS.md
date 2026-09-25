@@ -1,6 +1,6 @@
 # AGENTS.md: fleet-cloud
 
-Adopted: engineering-standard 3.0.0 on 2026-09-25 by Forge (openrouter/deepseek/deepseek-v4.1-flash), reviewed in the adoption pull request linked to issue #1.
+Adopted: engineering-standard 3.0.0 on 2026-09-25 by Forge (openrouter/deepseek/deepseek-v4.1-flash), reviewed in PR #2 (https://github.com/ulasnazim/fleet-cloud/pull/2).
 Governing documents: Universal Software Engineering Standard + Team Development Operating Policy, from `ulasnazim/engineering-standard` (local clone: `~/.engineering-standard/`). This file records **project facts only**. Agents maintain it; humans review changes by PR.
 
 ## Product
