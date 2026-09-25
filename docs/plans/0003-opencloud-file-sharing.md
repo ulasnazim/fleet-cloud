@@ -12,8 +12,9 @@ repository.
 - Dedicated network `fleet-cloud-opencloud-net` and named volumes
   `fleet-cloud-opencloud-{config,data}`.
 - Non-secret `.env.example`; admin password stays deployment-only.
-- Sharing hardening: internal default links, mandatory passwords on public
-  links, no demo/self-registration, no external IDP.
+- Sharing hardening: internal default links, disabled public-link storage
+  endpoint, mandatory passwords as defense in depth, no demo accounts or
+  external IDP.
 - Nginx origin site template for `files.nazimlaw.com` (TLS, forwarding
   headers, SSE/no-buffer, Tus upload size, long timeouts).
 - Secrets-free repository export helper (`scripts/export-shareable-files.sh`).

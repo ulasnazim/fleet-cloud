@@ -203,11 +203,13 @@ def check_opencloud_static() -> None:
     require("127.0.0.1:9200:9200" in text,
             "OpenCloud proxy port binds to 127.0.0.1:9200")
     require('IDM_CREATE_DEMO_USERS: "false"' in text,
-            "opencloud compose disables demo/self-registered users")
+            "opencloud compose disables demo users")
     require('PROXY_TLS: "false"' in text,
             "opencloud compose disables backend TLS (Nginx terminates TLS)")
     require('FRONTEND_DEFAULT_LINK_PERMISSIONS: "0"' in text,
             "opencloud compose defaults new links to internal-only")
+    require('GATEWAY_STORAGE_PUBLIC_LINK_ENDPOINT: ""' in text,
+            "opencloud compose disables the public-link storage endpoint")
     require('OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD: "true"' in text,
             "opencloud compose requires passwords on public links")
     require('OC_SHARING_PUBLIC_WRITEABLE_SHARE_MUST_HAVE_PASSWORD: "true"' in text,
@@ -338,13 +340,15 @@ def check_opencloud_compose_json(compose_json_path: str) -> None:
 
     env = _env_map(svc)
     require(env.get("IDM_CREATE_DEMO_USERS") in ("false", "False", "0"),
-            "resolved opencloud disables demo/self-registered users")
+            "resolved opencloud disables demo users")
     require(env.get("PROXY_TLS") in ("false", "False", "0"),
             "resolved opencloud disables backend TLS")
     require(env.get("PROXY_ENABLE_BASIC_AUTH") in ("false", "False", "0"),
             "resolved opencloud disables WebDAV basic auth")
     require(env.get("FRONTEND_DEFAULT_LINK_PERMISSIONS") == "0",
             "resolved opencloud defaults links to internal-only")
+    require(env.get("GATEWAY_STORAGE_PUBLIC_LINK_ENDPOINT") == "",
+            "resolved opencloud disables the public-link storage endpoint")
     require(env.get("OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD") in ("true", "True", "1"),
             "resolved opencloud requires public-link passwords")
     require(env.get("OC_SHARING_PUBLIC_WRITEABLE_SHARE_MUST_HAVE_PASSWORD") in ("true", "True", "1"),

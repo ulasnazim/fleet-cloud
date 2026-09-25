@@ -9,7 +9,7 @@ Fleet Cloud is a self-hosted fleet/asset tracking platform. The current product
 scope is the deployment foundation: upstream **Traccar 6.15.3** (Apache-2.0)
 tracking core with a dedicated **MySQL 8.0.43** database, served over HTTPS at
 `https://fleet.nazimlaw.com`. A second, isolated surface serves two named users
-(Ulaş, Birand) with upstream **OpenCloud 7.2.4** (Apache-2.0) file sharing at
+(Ulaş, Birand) with upstream **OpenCloud 7.2.4** file sharing at
 `https://files.nazimlaw.com`. Fleet Cloud-specific modules (maintenance, work
 orders, reporting, integrations) integrate through Traccar's REST API.
 Decisions: `docs/adr/0002-traccar-deployment-foundation.md`,
@@ -65,7 +65,7 @@ TODO(owner): document reversible deletion, change/bulk-change audit with actor a
 - Every image in `compose.yaml` and `ops/opencloud/compose.yaml` MUST be pinned to an immutable released tag; never use `latest`, `rolling` or `daily`.
 - MySQL, OpenCloud and other internal services MUST NOT publish host ports; the Traccar web/API port (`127.0.0.1:8082`) and the OpenCloud proxy port (`127.0.0.1:9200`) MUST bind to `127.0.0.1` only.
 - The OpenCloud stack MUST keep its own project, network, volumes and secrets and MUST NOT mount or synchronize the live `/srv/fleet-cloud` Traccar tree or the Docker socket.
-- OpenCloud MUST keep public/self-registration and anonymous/public-link sharing disabled; only password-protected links are allowed.
+- OpenCloud MUST keep anonymous/public-link access disabled with an empty public-link storage endpoint; accounts are administrator-created and Birand uses the User Light role.
 - No tracker protocol port range (5000–5300) may be published by default.
 - Secrets MUST NOT be committed; only the non-secret `.env.example` and `ops/opencloud/.env.example` are tracked.
 - `scripts/check-deployment-artifacts.py` and CI MUST pass before merge; CI uses least privilege (`contents: read`).
@@ -76,7 +76,7 @@ TODO(owner): document reversible deletion, change/bulk-change audit with actor a
 | Stack, product scope and infrastructure are unspecified | Bootstrap is limited to governance and repository scaffolding only | Ulaş (via issue #1) | Adoption PR #2 |
 | Pick an open-source tracking core | Use Traccar 6.15.3 (Apache-2.0) + MySQL 8.0.43 to permit proprietary extensions without AGPL network-source obligations | Ulaş (via issue #3) | Deployment foundation PR |
 | Prefer TimescaleDB for large telemetry volume | Chosen MySQL 8 as the documented "smaller server" production option and to avoid coupling with the existing PostgreSQL instance; revisit at high volume | Ulaş (via issue #3) | Deployment foundation PR |
-| No file-sharing surface | Deploy isolated OpenCloud 7.2.4 (Apache-2.0) for Ulaş (admin) and Birand (`Can edit`); `files.nazimlaw.com`; local identity only with anonymous/public-link sharing off | Ulaş (via issue #7) | OpenCloud deployment PR |
+| No file-sharing surface | Deploy isolated OpenCloud 7.2.4 for Ulaş (admin) and Birand (User Light + Space `Can edit`); `files.nazimlaw.com`; local identity only with anonymous/public-link access off. Server is Apache-2.0; the official bundle may contain copyleft web components and is deployed unmodified under Ulaş's approval. | Ulaş (via issue #7) | OpenCloud deployment PR |
 
 ## Portable core (for agents without the global policy installed; do not edit)
 - Never commit, log or send credentials, authentication secrets or `.env` secrets to AI providers; private code and customer data may go to any AI provider for the task.

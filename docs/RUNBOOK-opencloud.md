@@ -139,8 +139,9 @@ The built-in `admin` user's initial password is `OPENCLOUD_ADMIN_PASSWORD` in
 
 Provision the second account (Birand) from **Admin Settings → Users**:
 
-- Create a single local (member) account. Do **not** grant the Admin or Space
-  Admin user role.
+- Create a single local account and assign the **User Light** role. Do **not**
+  grant the User, Admin or Space Admin role. User Light can participate in an
+  assigned Space but cannot create Spaces or public links.
 - Set a unique password out-of-band (typed interactively; no email reset will
   fire because no SMTP server is configured). Do not transmit it through
   GitHub/Telegram/logs/prompts.
@@ -197,9 +198,11 @@ After provisioning, confirm the hardening is effective — every item must hold:
 1. **No public/self-registration:** the login page offers no sign-up/invite
    path, and `https://files.nazimlaw.com/` with no session reaches only the
    login flow (no anonymous browsing).
-2. **Anonymous/public-link sharing off by default:** creating a link in the
-   Space defaults to an internal (members-only) link. If a public link is
-   created deliberately, OpenCloud requires a password before it is accepted.
+2. **Anonymous/public-link access disabled:** links default to internal
+   (members-only), Birand's User Light role cannot create public links, and the
+   public-link storage endpoint is empty. Verify an unauthenticated public-link
+   URL cannot retrieve a file. If it can, stop the stack and correct the
+   configuration before use.
 3. **No guest/anonymous accounts:** Admin Settings → Users lists only `admin`
    and Birand.
 4. **Isolation:** `docker compose -p fleet-cloud ps` is unchanged and healthy;
@@ -305,8 +308,9 @@ The existing `fleet-cloud` Traccar/MySQL stack is untouched throughout.
   and `/var/lib/docker` are not exposed.
 - The OpenCloud proxy binds `127.0.0.1:9200` only; no internal service port is
   published. Nginx/Cloudflare is the only HTTPS entry point.
-- Local identity only (no external IDP/demo users); public/self-registration
-  and anonymous sharing are off; public links require a password.
+- Local identity only (no external IDP/demo users); accounts are created by the
+  administrator. Anonymous/public-link access is disabled by an empty public-
+  link storage endpoint; password enforcement remains defense in depth.
 - The container runs unprivileged (`1000:1000`) with `no-new-privileges` and
   CPU/memory/PID limits, on its own network and volumes.
 

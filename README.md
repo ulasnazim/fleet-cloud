@@ -15,7 +15,7 @@ Traccar's REST API rather than by patching upstream internals.
 |---|---|
 | Tracking core | Traccar `6.15.3-alpine` (Apache-2.0) |
 | Database | MySQL `8.0.43` (separate service, no host port) |
-| File sharing | OpenCloud `7.2.4` (Apache-2.0, isolated stack) |
+| File sharing | OpenCloud `7.2.4` (official unmodified image, isolated stack) |
 | Edge | Nginx origin + Cloudflare (Full strict) |
 | Runtime | Docker Compose projects `fleet-cloud` and `fleet-cloud-opencloud` on the authorized VPS |
 

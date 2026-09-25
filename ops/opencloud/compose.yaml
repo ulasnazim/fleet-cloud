@@ -11,8 +11,8 @@
 #     nothing secret is committed here (see .env.example);
 #   * the OpenCloud proxy port binds to host loopback only and is fronted by
 #     Nginx (ops/nginx/files.nazimlaw.com.conf);
-#   * public self-registration, demo users and anonymous/public-link sharing
-#     are disabled (internal identity, password-protected links only);
+#   * demo users and anonymous/public-link access are disabled; accounts are
+#     created locally by the administrator;
 #   * every persistent path is a dedicated named volume — the live
 #     Traccar deployment tree is never mounted here.
 #
@@ -55,9 +55,12 @@ services:
       # --- Sharing hardening ---
       # New links default to internal (members-only) rather than public.
       FRONTEND_DEFAULT_LINK_PERMISSIONS: "0"
-      # Any public link that is created must be password protected, for both
-      # read-only and writable links. Combined with the internal default and
-      # no anonymous/guest accounts, anonymous public sharing is unavailable.
+      # Disable the public-link storage endpoint so anonymous link access is
+      # unavailable even if an administrator accidentally creates a link.
+      # OpenCloud documented this exact empty-endpoint setting as its public-
+      # link shutdown control (GHSA-vf5j-r2hw-2hrw).
+      GATEWAY_STORAGE_PUBLIC_LINK_ENDPOINT: ""
+      # Defense in depth if public links are deliberately enabled later.
       OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD: "true"
       OC_SHARING_PUBLIC_WRITEABLE_SHARE_MUST_HAVE_PASSWORD: "true"
 

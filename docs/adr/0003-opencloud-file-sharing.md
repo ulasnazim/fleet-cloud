@@ -33,10 +33,12 @@ Concrete repository decisions:
   — no Keycloak/external IDP, no demo users, no public/self-registration. Only
   `admin` (Ulaş) and the scoped member account (Birand) exist; accounts are
   created by the admin.
-- **Sharing:** new links default to internal (`FRONTEND_DEFAULT_LINK_PERMISSIONS=0`);
-  any created public link must have a password
+- **Sharing:** new links default to internal (`FRONTEND_DEFAULT_LINK_PERMISSIONS=0`),
+  and the public-link storage endpoint is disabled
+  (`GATEWAY_STORAGE_PUBLIC_LINK_ENDPOINT=""`). Password enforcement remains
+  configured as defense in depth
   (`OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD=true` and
-  `..._WRITEABLE_...=true`), so anonymous public sharing is unavailable. The
+  `..._WRITEABLE_...=true`), so anonymous public-link access is unavailable. The
   runbook adds an explicit post-deploy verification step.
 - **Space model:** one Space named `Fleet Cloud`. Ulaş is the Space
   manager/admin (`Can manage`); Birand is a non-admin member with `Can edit`
@@ -62,18 +64,18 @@ Concrete repository decisions:
 - **OpenCloud rolling image / `latest`** — rejected: the issue forbids
   floating tags; production stability requires a released tag.
 - **Public/anonymous link sharing enabled** — rejected: only two named members
-  need access, so anonymous sharing is off by default and password-protected
-  when explicitly created.
+  need access, so the public-link storage endpoint is disabled.
 - **Bind-mounting or syncing `/srv/fleet-cloud` into the Space** — rejected:
   would expose Traccar runtime data and secrets; only a tracked-file export is
   shared.
 
 ## Licensing
-- **OpenCloud is Apache-2.0** (verified against the `v7.2.4` `LICENSE` and the
-  image's `org.opencontainers.image.licenses=Apache-2.0` label). It is a
-  permissive licence with **no network-source (copyleft) obligation**, so no
-  Fleet Cloud code or proprietary modules are affected. The issue anticipated a
-  possible copyleft impact; the actual core licence is Apache-2.0.
+- **OpenCloud server is Apache-2.0** (verified against the `v7.2.4` `LICENSE`
+  and the image's `org.opencontainers.image.licenses=Apache-2.0` label). The
+  separately maintained web client includes copyleft-licensed components; this
+  deployment uses the official image unmodified and does not distribute or
+  link Fleet Cloud code with it. Ulaş explicitly approved this self-hosted
+  OpenCloud deployment in issue #7.
 - OpenCloud runs as a **separate, unmodified official container**; this
   repository does not link against or modify its code.
 - **Collabora Online / Web Office is not deployed**, avoiding AGPL web-office
@@ -90,5 +92,5 @@ Concrete repository decisions:
 - Operational ownership stays with trusted local Lui Dev/Sol: account
   provisioning, secrets, DNS, Nginx install and the production deployment are
   not performed from this repository or CI.
-- Anonymous public sharing is intentionally unavailable; file sharing with
-  third parties requires password-protected links or a new decision.
+- Anonymous public sharing is intentionally unavailable; sharing with third
+  parties requires a new owner decision and configuration change.
