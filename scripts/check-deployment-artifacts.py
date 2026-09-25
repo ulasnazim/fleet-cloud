@@ -38,6 +38,12 @@ REQUIRED_FILES = [
     ".gitignore",
     "ops/nginx/fleet.nazimlaw.com.conf",
     "ops/traccar/traccar.xml.template",
+    # Isolated OpenCloud file-sharing stack (issue #7).
+    "ops/opencloud/compose.yaml",
+    "ops/opencloud/.env.example",
+    "ops/nginx/files.nazimlaw.com.conf",
+    "scripts/export-shareable-files.sh",
+    "docs/RUNBOOK-opencloud.md",
 ]
 
 # High-signal credential patterns. Deliberately narrow to avoid noise.
@@ -185,6 +191,173 @@ def check_secret_scan() -> None:
     ok(f"secret scan covered {scanned} tracked text files with no matches")
 
 
+def check_opencloud_static() -> None:
+    text = (REPO_ROOT / "ops/opencloud/compose.yaml").read_text(encoding="utf-8")
+    require(re.search(r"(?m)^name:\s*fleet-cloud-opencloud\s*$", text) is not None,
+            "opencloud compose sets project name 'fleet-cloud-opencloud'")
+    require(":latest" not in text, "opencloud compose contains no ':latest' image tag")
+    require("opencloud-rolling" not in text,
+            "opencloud compose does not use the rolling image family")
+    require("image: opencloudeu/opencloud:7.2.4" in text,
+            "OpenCloud image pinned to opencloudeu/opencloud:7.2.4")
+    require("127.0.0.1:9200:9200" in text,
+            "OpenCloud proxy port binds to 127.0.0.1:9200")
+    require('IDM_CREATE_DEMO_USERS: "false"' in text,
+            "opencloud compose disables demo users")
+    require('PROXY_TLS: "false"' in text,
+            "opencloud compose disables backend TLS (Nginx terminates TLS)")
+    require('FRONTEND_DEFAULT_LINK_PERMISSIONS: "0"' in text,
+            "opencloud compose defaults new links to internal-only")
+    require('GATEWAY_STORAGE_PUBLIC_LINK_ENDPOINT: ""' in text,
+            "opencloud compose disables the public-link storage endpoint")
+    require('OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD: "true"' in text,
+            "opencloud compose requires passwords on public links")
+    require('OC_SHARING_PUBLIC_WRITEABLE_SHARE_MUST_HAVE_PASSWORD: "true"' in text,
+            "opencloud compose requires passwords on writable public links")
+    # The stack must never reach into the Traccar deployment or the Docker socket.
+    require("/srv/fleet-cloud/" not in text,
+            "opencloud compose does not reference the live Traccar tree")
+    require("docker.sock" not in text, "opencloud compose does not mount the Docker socket")
+
+
+def check_opencloud_env_example() -> None:
+    text = (REPO_ROOT / "ops/opencloud/.env.example").read_text(encoding="utf-8")
+    require("OPENCLOUD_URL=https://files.nazimlaw.com" in text,
+            "opencloud .env.example sets the public files.nazimlaw.com URL")
+    require(re.search(r"(?m)^OPENCLOUD_ADMIN_PASSWORD=\S+", text) is not None,
+            "opencloud .env.example declares OPENCLOUD_ADMIN_PASSWORD (placeholder)")
+    require("OPENCLOUD_ADMIN_PASSWORD=replace-with-a-unique-long-random-password" in text,
+            "opencloud .env.example keeps a non-secret placeholder password")
+
+
+def check_opencloud_nginx() -> None:
+    text = (REPO_ROOT / "ops/nginx/files.nazimlaw.com.conf").read_text(encoding="utf-8")
+    required = {
+        "server_name files.nazimlaw.com;": "serves files.nazimlaw.com",
+        "listen 443 ssl;": "listens on 443 with TLS",
+        "listen 80;": "redirects plain HTTP",
+        "location ^~ /.well-known/acme-challenge/": "serves ACME HTTP-01 challenges",
+        "root /var/www/html;": "uses the shared ACME webroot",
+        "proxy_pass http://127.0.0.1:9200;": "proxies to loopback OpenCloud",
+        "client_max_body_size": "raises the upload size limit for Tus uploads",
+        "proxy_buffering off;": "disables proxy buffering for SSE",
+        "proxy_request_buffering off;": "disables request buffering for uploads",
+        "proxy_read_timeout 3600s;": "extends the read timeout for sync",
+        "proxy_send_timeout 3600s;": "extends the send timeout for sync",
+        "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;": "sets X-Forwarded-For",
+        "proxy_set_header X-Forwarded-Proto https;": "sets X-Forwarded-Proto",
+        "/etc/letsencrypt/live/files.nazimlaw.com/fullchain.pem": "uses the Let's Encrypt fullchain",
+        "/etc/letsencrypt/live/files.nazimlaw.com/privkey.pem": "uses the Let's Encrypt private key",
+        "include /etc/letsencrypt/options-ssl-nginx.conf;": "includes the host TLS options",
+        "ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;": "uses the host dhparams",
+    }
+    for needle, label in required.items():
+        require(needle in text, f"opencloud nginx template {label}")
+    require("/etc/nginx/ssl/" not in text,
+            "opencloud nginx template has no legacy /etc/nginx/ssl reference")
+    require("$opencloud_conn_upgrade" in text,
+            "opencloud nginx template uses a namespaced upgrade variable")
+    require(text.count("{") == text.count("}"),
+            "opencloud nginx template braces are balanced")
+
+
+def check_opencloud_runbook() -> None:
+    text = (REPO_ROOT / "docs/RUNBOOK-opencloud.md").read_text(encoding="utf-8")
+    required = {
+        "Can edit": "documents the Birand 'Can edit' Space role",
+        "Can manage": "documents the Ulaş 'Can manage' Space role",
+        "Fleet Cloud": "names the Fleet Cloud Space",
+        "export-shareable-files.sh": "covers the secrets-free repository export",
+        "status.php": "documents the health endpoint",
+        "docker volume rm fleet-cloud-opencloud-config": "covers data removal/revocation",
+        "certbot certonly": "covers the TLS bootstrap",
+        "http://127.0.0.1:9200": "documents the loopback upstream",
+    }
+    for needle, label in required.items():
+        require(needle in text, f"opencloud runbook {label}")
+
+
+def _env_map(service: dict) -> dict:
+    env = service.get("environment") or {}
+    if isinstance(env, dict):
+        return {str(k): ("" if v is None else str(v)) for k, v in env.items()}
+    out = {}
+    for item in env:
+        key, _, value = str(item).partition("=")
+        out[key] = value
+    return out
+
+
+def check_opencloud_compose_json(compose_json_path: str) -> None:
+    try:
+        data = json.loads(Path(compose_json_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"could not load resolved opencloud compose JSON: {exc}")
+        return
+
+    require(data.get("name") == "fleet-cloud-opencloud",
+            "resolved opencloud project name is fleet-cloud-opencloud")
+    services = data.get("services", {})
+    require(set(services) == {"opencloud"},
+            "resolved opencloud services are exactly opencloud")
+
+    svc = services.get("opencloud", {})
+    image = svc.get("image", "")
+    require(bool(image) and not image.endswith(":latest") and "rolling" not in image,
+            f"opencloud image is pinned and non-floating ({image or 'missing'})")
+    require(svc.get("restart") == "unless-stopped", "opencloud restart policy is unless-stopped")
+    require(bool(svc.get("healthcheck")), "opencloud has a healthcheck")
+    limits = svc.get("deploy", {}).get("resources", {}).get("limits", {})
+    require(bool(limits.get("cpus")) and bool(limits.get("memory")),
+            "opencloud has CPU and memory limits")
+    require("internal" in (svc.get("networks") or {}),
+            "opencloud is attached to the dedicated network")
+
+    # Only the proxy port, on host loopback, may be published.
+    ports = svc.get("ports", []) or []
+    published = [(p.get("host_ip"), p.get("published"), p.get("target")) for p in ports]
+    require(len(published) == 1, "opencloud publishes exactly one port")
+    require(all(ip == "127.0.0.1" for ip, *_ in published),
+            "opencloud published ports bind to 127.0.0.1 only")
+    require(any(str(target) == "9200" for _, _, target in published),
+            "opencloud publishes the proxy port 9200")
+
+    mounts = svc.get("volumes", []) or []
+    targets = {m.get("target") for m in mounts}
+    require("/etc/opencloud" in targets, "opencloud config volume mounted")
+    require("/var/lib/opencloud" in targets, "opencloud data volume mounted")
+    require(not any("/srv/fleet-cloud" in str(m.get("source", "")) for m in mounts),
+            "opencloud mounts no Traccar host path")
+
+    volumes = data.get("volumes", {}) or {}
+    volume_names = {v.get("name") for v in volumes.values()}
+    for expected in ("fleet-cloud-opencloud-config", "fleet-cloud-opencloud-data"):
+        require(expected in volume_names, f"named volume present: {expected}")
+
+    networks = data.get("networks", {}) or {}
+    require("fleet-cloud-opencloud-net" in {n.get("name") for n in networks.values()},
+            "dedicated network fleet-cloud-opencloud-net present")
+
+    env = _env_map(svc)
+    require(env.get("IDM_CREATE_DEMO_USERS") in ("false", "False", "0"),
+            "resolved opencloud disables demo users")
+    require(env.get("PROXY_TLS") in ("false", "False", "0"),
+            "resolved opencloud disables backend TLS")
+    require(env.get("PROXY_ENABLE_BASIC_AUTH") in ("false", "False", "0"),
+            "resolved opencloud disables WebDAV basic auth")
+    require(env.get("FRONTEND_DEFAULT_LINK_PERMISSIONS") == "0",
+            "resolved opencloud defaults links to internal-only")
+    require(env.get("GATEWAY_STORAGE_PUBLIC_LINK_ENDPOINT") == "",
+            "resolved opencloud disables the public-link storage endpoint")
+    require(env.get("OC_SHARING_PUBLIC_SHARE_MUST_HAVE_PASSWORD") in ("true", "True", "1"),
+            "resolved opencloud requires public-link passwords")
+    require(env.get("OC_SHARING_PUBLIC_WRITEABLE_SHARE_MUST_HAVE_PASSWORD") in ("true", "True", "1"),
+            "resolved opencloud requires passwords on writable public links")
+    require(env.get("OC_URL", "").startswith("https://files.nazimlaw.com"),
+            "resolved opencloud public URL is https://files.nazimlaw.com")
+    ok("resolved OpenCloud Compose configuration validated")
+
+
 def check_compose_json(compose_json_path: str) -> None:
     try:
         data = json.loads(Path(compose_json_path).read_text(encoding="utf-8"))
@@ -266,6 +439,8 @@ def check_compose_json(compose_json_path: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compose-json", help="resolved `docker compose config --format json` output")
+    parser.add_argument("--opencloud-compose-json",
+                        help="resolved `docker compose config --format json` output for the OpenCloud stack")
     args = parser.parse_args()
 
     check_required_files()
@@ -274,9 +449,15 @@ def main() -> int:
     check_gitignore()
     check_nginx()
     check_runbook_session_expectation()
+    check_opencloud_static()
+    check_opencloud_env_example()
+    check_opencloud_nginx()
+    check_opencloud_runbook()
     check_secret_scan()
     if args.compose_json:
         check_compose_json(args.compose_json)
+    if args.opencloud_compose_json:
+        check_opencloud_compose_json(args.opencloud_compose_json)
 
     print()
     if failures:

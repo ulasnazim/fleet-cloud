@@ -29,6 +29,13 @@ jobs:
             > "${RUNNER_TEMP}/compose.json"
           python3 scripts/check-deployment-artifacts.py --compose-json "${RUNNER_TEMP}/compose.json"
 
+      - name: Validate the rendered OpenCloud Compose configuration
+        run: |
+          set -euo pipefail
+          docker compose --env-file ops/opencloud/.env.example -f ops/opencloud/compose.yaml config --format json \
+            > "${RUNNER_TEMP}/opencloud-compose.json"
+          python3 scripts/check-deployment-artifacts.py --opencloud-compose-json "${RUNNER_TEMP}/opencloud-compose.json"
+
       - name: Check for whitespace errors in the change
         run: |
           set -euo pipefail

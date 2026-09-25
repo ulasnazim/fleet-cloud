@@ -8,13 +8,16 @@ Governing documents: Universal Software Engineering Standard + Team Development 
 Fleet Cloud is a self-hosted fleet/asset tracking platform. The current product
 scope is the deployment foundation: upstream **Traccar 6.15.3** (Apache-2.0)
 tracking core with a dedicated **MySQL 8.0.43** database, served over HTTPS at
-`https://fleet.nazimlaw.com`. Fleet Cloud-specific modules (maintenance, work
+`https://fleet.nazimlaw.com`. A second, isolated surface serves two named users
+(Ulaş, Birand) with upstream **OpenCloud 7.2.4** file sharing at
+`https://files.nazimlaw.com`. Fleet Cloud-specific modules (maintenance, work
 orders, reporting, integrations) integrate through Traccar's REST API.
-Decisions: `docs/adr/0002-traccar-deployment-foundation.md`.
+Decisions: `docs/adr/0002-traccar-deployment-foundation.md`,
+`docs/adr/0003-opencloud-file-sharing.md`.
 TODO(owner): provide the full product brief (`docs/BRIEF.md`) with users, requirements and acceptance criteria beyond tracking.
 
 ## Active profiles (Standard §18)
-- **§18.1 Web application** — Traccar serves a browser web UI (device map, reports) behind Nginx.
+- **§18.1 Web application** — Traccar serves a browser web UI (device map, reports) and OpenCloud serves the file-sharing web UI, both behind Nginx.
 - **§18.3 API or backend** — Traccar exposes a REST API (`/api/*`) used by the UI and future Fleet Cloud modules.
 - **§18.4 Database-heavy** — a dedicated MySQL 8 service stores devices, positions and events.
 - **§18.5 Realtime, IoT, telemetry or vehicle-tracking** — the product's core purpose is GPS/telemetry ingestion and tracking.
@@ -31,13 +34,13 @@ Verified locally on 2026-09-25 (Docker Compose v2, Python 3):
 - Type-check: n/a (no typed application code yet).
 - Lint + format: none configured; CI runs `git diff --check` for whitespace.
 - Build: n/a (images are pulled, not built).
-- Smoke test: `docker compose --env-file .env.example -f compose.yaml config` → success and `python3 scripts/check-deployment-artifacts.py` → all checks pass.
-- Deploy-validation: `docker compose --env-file /srv/fleet-cloud/.env -f compose.yaml config -q` on the VPS.
+- Smoke test: `docker compose --env-file .env.example -f compose.yaml config` → success and `python3 scripts/check-deployment-artifacts.py` → all checks pass. OpenCloud: `docker compose --env-file ops/opencloud/.env.example -f ops/opencloud/compose.yaml config` → success.
+- Deploy-validation: `docker compose --env-file /srv/fleet-cloud/.env -f compose.yaml config -q` on the VPS, and `docker compose --env-file /srv/fleet-cloud-opencloud/.env -f ops/opencloud/compose.yaml config -q` for OpenCloud.
 
 ## Repository map
-- Entry point: `compose.yaml` (Traccar + MySQL stack). · Business logic: TODO(owner) — no product code yet. · Data access and migrations: Traccar-owned (upstream Liquibase migrations run on start). · Tests: `scripts/check-deployment-artifacts.py` + `.github/workflows/repo-checks.yml`.
-- Edge config: `ops/nginx/fleet.nazimlaw.com.conf`. · Traccar config reference: `ops/traccar/traccar.xml.template`. · Runtime config template: `.env.example`.
-- Plans `docs/plans/` · ADRs `docs/adr/` · Runbook `docs/RUNBOOK.md`.
+- Entry point: `compose.yaml` (Traccar + MySQL stack, project `fleet-cloud`); `ops/opencloud/compose.yaml` (OpenCloud stack, project `fleet-cloud-opencloud`). · Business logic: TODO(owner) — no product code yet. · Data access and migrations: Traccar-owned (upstream Liquibase migrations run on start); OpenCloud-owned (upstream migrations on start). · Tests: `scripts/check-deployment-artifacts.py` + `.github/workflows/repo-checks.yml`.
+- Edge config: `ops/nginx/fleet.nazimlaw.com.conf`, `ops/nginx/files.nazimlaw.com.conf`. · Traccar config reference: `ops/traccar/traccar.xml.template`. · Runtime config templates: `.env.example`, `ops/opencloud/.env.example`. · Secrets-free export: `scripts/export-shareable-files.sh`.
+- Plans `docs/plans/` · ADRs `docs/adr/` · Runbooks `docs/RUNBOOK.md`, `docs/RUNBOOK-opencloud.md`.
 
 ## Architecture rules
 - Traccar is an **unmodified upstream dependency** (pinned image). Do not patch its internals.
@@ -50,6 +53,8 @@ Target: the authorized VPS is the runtime; one isolated Compose project `fleet-c
 Deployment command: `docker compose --env-file /srv/fleet-cloud/.env -f compose.yaml up -d` (executed by trusted local Lui Dev/Sol, not from CI). · Health endpoint: `http://127.0.0.1:8082/api/health` (loopback), public `https://fleet.nazimlaw.com`. · Rollback path: revert pinned image tags/revision and `up -d` (database volume preserved); forward recovery preferred for schema changes — see `docs/RUNBOOK.md` §8.
 Persistent data locations: named volumes `fleet-cloud-db-data`, `fleet-cloud-traccar-data`, `fleet-cloud-traccar-media`, `fleet-cloud-traccar-logs` (host paths `/var/lib/docker/volumes/fleet-cloud-*`).
 Credentials: injected at runtime from the root-owned `/srv/fleet-cloud/.env` (never committed); Traccar uses environment-variable configuration. Ulaş separately manages Hostinger backups; all persistent volumes needing coverage are listed in `docs/RUNBOOK.md` §9. Device protocol port policy: no 5000–5300 port published by default (`docs/RUNBOOK.md` §10).
+
+Second, isolated runtime: OpenCloud 7.2.4 as Compose project `fleet-cloud-opencloud` under `/srv/fleet-cloud-opencloud` (own directory, network `fleet-cloud-opencloud-net`, volumes `fleet-cloud-opencloud-{config,data}`, own root-owned `.env`). The proxy binds `127.0.0.1:9200` only; Nginx serves `https://files.nazimlaw.com`. Local identity only (no external IDP, no demo/self-registered users); public/self-registration and anonymous/public-link sharing are off. Deployment, account provisioning and Space setup are in `docs/RUNBOOK-opencloud.md`; only a secrets-free tracked-file export (`scripts/export-shareable-files.sh`) is shared into the `Fleet Cloud` Space (Ulaş `Can manage`, Birand `Can edit`).
 Public DNS/Cloudflare and Nginx install stay with trusted local Lui Dev/Sol. Nginx sites follow the host convention (`/etc/nginx/sites-available/` with a `sites-enabled` symlink) and use host Let's Encrypt certificates under `/etc/letsencrypt/live/fleet.nazimlaw.com/`; the first deployment bootstraps a temporary HTTP-only site, obtains the certificate with the existing Certbot account, then installs the final TLS site (`docs/RUNBOOK.md` §4). No production infrastructure is changed from this repository or CI.
 
 ## Data-change history and recovery (if the product stores valuable records)
@@ -57,10 +62,12 @@ The database stores valuable tracking records (devices, positions, events). Trac
 TODO(owner): document reversible deletion, change/bulk-change audit with actor and sponsoring human, retention and bulk-delete alerts once Fleet Cloud-specific records exist.
 
 ## Project-specific rules
-- Every image in `compose.yaml` MUST be pinned to an immutable tag; never use `latest`.
-- MySQL and other internal services MUST NOT publish host ports; the web/API port MUST bind to `127.0.0.1` only.
+- Every image in `compose.yaml` and `ops/opencloud/compose.yaml` MUST be pinned to an immutable released tag; never use `latest`, `rolling` or `daily`.
+- MySQL, OpenCloud and other internal services MUST NOT publish host ports; the Traccar web/API port (`127.0.0.1:8082`) and the OpenCloud proxy port (`127.0.0.1:9200`) MUST bind to `127.0.0.1` only.
+- The OpenCloud stack MUST keep its own project, network, volumes and secrets and MUST NOT mount or synchronize the live `/srv/fleet-cloud` Traccar tree or the Docker socket.
+- OpenCloud MUST keep anonymous/public-link access disabled with an empty public-link storage endpoint; accounts are administrator-created and Birand uses the User Light role.
 - No tracker protocol port range (5000–5300) may be published by default.
-- Secrets MUST NOT be committed; only the non-secret `.env.example` is tracked.
+- Secrets MUST NOT be committed; only the non-secret `.env.example` and `ops/opencloud/.env.example` are tracked.
 - `scripts/check-deployment-artifacts.py` and CI MUST pass before merge; CI uses least privilege (`contents: read`).
 
 ## Material human decisions and exceptions (if any)
@@ -69,6 +76,7 @@ TODO(owner): document reversible deletion, change/bulk-change audit with actor a
 | Stack, product scope and infrastructure are unspecified | Bootstrap is limited to governance and repository scaffolding only | Ulaş (via issue #1) | Adoption PR #2 |
 | Pick an open-source tracking core | Use Traccar 6.15.3 (Apache-2.0) + MySQL 8.0.43 to permit proprietary extensions without AGPL network-source obligations | Ulaş (via issue #3) | Deployment foundation PR |
 | Prefer TimescaleDB for large telemetry volume | Chosen MySQL 8 as the documented "smaller server" production option and to avoid coupling with the existing PostgreSQL instance; revisit at high volume | Ulaş (via issue #3) | Deployment foundation PR |
+| No file-sharing surface | Deploy isolated OpenCloud 7.2.4 for Ulaş (admin) and Birand (User Light + Space `Can edit`); `files.nazimlaw.com`; local identity only with anonymous/public-link access off. Server is Apache-2.0; the official bundle may contain copyleft web components and is deployed unmodified under Ulaş's approval. | Ulaş (via issue #7) | OpenCloud deployment PR |
 
 ## Portable core (for agents without the global policy installed; do not edit)
 - Never commit, log or send credentials, authentication secrets or `.env` secrets to AI providers; private code and customer data may go to any AI provider for the task.
