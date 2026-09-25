@@ -38,6 +38,10 @@ mounted or synchronized by this stack.
 - A DNS record for `files.nazimlaw.com` resolving to this host before the
   certificate is requested.
 - No existing service listens on host port 9200.
+- Host Nginx accepts TLS for `files.nazimlaw.com`; the Compose `extra_hosts`
+  mapping intentionally resolves that OIDC issuer hostname to `host-gateway`
+  inside the container, avoiding external-DNS propagation and Cloudflare
+  hairpin dependencies during login.
 
 ## 3. First deployment
 
@@ -184,6 +188,7 @@ dumps, logs, or any `/srv/fleet-cloud` runtime file.
 | Check | Command | Expected |
 |---|---|---|
 | Loopback readiness | `curl -fsS http://127.0.0.1:9200/status.php` | HTTP 200, status payload |
+| OIDC discovery from container | `docker compose ... exec opencloud curl -fsS https://files.nazimlaw.com/.well-known/openid-configuration` | Valid discovery JSON over verified TLS |
 | Public HTTPS | `curl -fsSI https://files.nazimlaw.com/status.php` | HTTP 200 over TLS |
 | Login flow only | `curl -sS -o /dev/null -w '%{http_code}' https://files.nazimlaw.com/` | Redirect/HTML login (no anonymous file listing) |
 | Container | `docker compose --env-file /srv/fleet-cloud-opencloud/.env -f ops/opencloud/compose.yaml ps` | `healthy` |
@@ -209,6 +214,9 @@ After provisioning, confirm the hardening is effective — every item must hold:
    no `fleet-cloud-opencloud` container is attached to `fleet-cloud-net`.
 5. **Bind scope:** `ss -ltnp | grep 9200` shows the listener on `127.0.0.1`
    only (never `0.0.0.0`).
+6. **OIDC issuer reachability:** from the container,
+   `getent hosts files.nazimlaw.com` resolves to the host gateway and the HTTPS
+   discovery request succeeds with certificate verification.
 
 Record the revision and the results. If any item fails, treat it as a
 blocker: stop the stack (`docker compose ... down`, data preserved) and report.
