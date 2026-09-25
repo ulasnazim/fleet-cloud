@@ -17,7 +17,9 @@ Use upstream **Traccar 6.15.3** (`traccar/traccar:6.15.3-alpine`) as the
 open-source tracking core, backed by a dedicated **MySQL 8.0.43**
 (`mysql:8.0.43`) service, deployed as an isolated Docker Compose stack
 (project `fleet-cloud`) with Nginx terminating TLS for
-`https://fleet.nazimlaw.com`.
+`https://fleet.nazimlaw.com` using the host Let's Encrypt certificate
+convention (`/etc/nginx/sites-available/` + `sites-enabled`, certificates
+under `/etc/letsencrypt/live/fleet.nazimlaw.com/`).
 
 Concrete repository decisions:
 - **Images are pinned** to immutable release tags (no `latest`).

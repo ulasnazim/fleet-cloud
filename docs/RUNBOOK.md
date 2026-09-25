@@ -13,7 +13,7 @@ See `docs/adr/0002-traccar-deployment-foundation.md` for the decisions.
 |---|---|
 | `compose.yaml` | Pinned Traccar + MySQL stack, project `fleet-cloud` |
 | `.env.example` | Non-secret runtime configuration template |
-| `ops/nginx/fleet.nazimlaw.com.conf` | Nginx origin site template |
+| `ops/nginx/fleet.nazimlaw.com.conf` | Nginx final TLS site (Let's Encrypt) |
 | `ops/traccar/traccar.xml.template` | Optional XML reference (not mounted) |
 | `scripts/check-deployment-artifacts.py` | Deterministic deployment checks (also run in CI) |
 | `.github/workflows/repo-checks.yml` | Least-privilege CI (`contents: read`) |
@@ -25,9 +25,13 @@ deployment-only `.env`; containers store data in the named volumes below.
 
 - Docker Engine with the Compose v2 plugin.
 - Root (or sudo) on the VPS.
-- The shared host TLS certificate pair already present:
-  `/etc/nginx/ssl/nazimlaw.com-origin.pem` and `.key`.
-- Nginx with the host convention of per-site files in `/etc/nginx/conf.d/`.
+- Nginx with the host convention: site files in `/etc/nginx/sites-available/`,
+  enabled by symlinks in `/etc/nginx/sites-enabled/`.
+- Certbot already installed and registered, with the shared ACME HTTP-01
+  webroot `/var/www/html`. The existing host account is reused; this
+  repository never supplies an email address.
+- A DNS record for `fleet.nazimlaw.com` resolving to this host before the
+  certificate is requested.
 
 ## 3. First deployment
 
@@ -55,17 +59,62 @@ docker compose --env-file /srv/fleet-cloud/.env -f compose.yaml up -d
 docker compose --env-file /srv/fleet-cloud/.env -f compose.yaml ps
 ```
 
-## 4. Nginx site
+## 4. Nginx site and TLS bootstrap
+
+`fleet.nazimlaw.com` has no certificate yet, so the first deployment installs
+a temporary HTTP-only site, obtains a Let's Encrypt certificate with the
+existing Certbot installation/account (non-interactively, without inventing an
+email), then installs the final TLS site.
 
 ```sh
-install -m 0644 ops/nginx/fleet.nazimlaw.com.conf /etc/nginx/conf.d/fleet.nazimlaw.com.conf
+# 4a. Bootstrap: temporary HTTP-only site serving ACME challenges.
+install -d -m 0755 /var/www/html
+cat > /etc/nginx/sites-available/fleet.nazimlaw.com <<'NGINX'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name fleet.nazimlaw.com;
+
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+NGINX
+ln -sfn /etc/nginx/sites-available/fleet.nazimlaw.com \
+       /etc/nginx/sites-enabled/fleet.nazimlaw.com
 nginx -t
 systemctl reload nginx
+
+# 4b. Obtain the certificate non-interactively (reuses the existing account).
+# If Certbot reports that no account exists, STOP and ask the owner for the
+# registration email — do not invent one.
+certbot certonly --webroot -w /var/www/html -d fleet.nazimlaw.com \
+    --non-interactive --keep-until-expiring
+
+# 4c. Install the final TLS site from this repository and reload.
+install -m 0644 ops/nginx/fleet.nazimlaw.com.conf \
+    /etc/nginx/sites-available/fleet.nazimlaw.com
+ln -sfn /etc/nginx/sites-available/fleet.nazimlaw.com \
+       /etc/nginx/sites-enabled/fleet.nazimlaw.com
+nginx -t
+systemctl reload nginx
+
+# 4d. Verify renewal and HTTPS.
+certbot renew --dry-run
+curl -fsSI https://fleet.nazimlaw.com/
 ```
 
-`fleet.nazimlaw.com` DNS and Cloudflare proxying use the host TLS pattern
-(Cloudflare **Full (strict)** against the origin certificate). DNS is managed
-locally by Lui Dev/Sol after resolving the `nazimlaw.com` zone dynamically.
+Certificates live at `/etc/letsencrypt/live/fleet.nazimlaw.com/`; the site
+includes `/etc/letsencrypt/options-ssl-nginx.conf` and
+`/etc/letsencrypt/ssl-dhparams.pem`, matching the other host sites. Automatic
+renewal uses the host's existing Certbot timer. Cloudflare proxies
+`fleet.nazimlaw.com` with **Full (strict)** against this origin certificate;
+DNS is managed locally by Lui Dev/Sol after resolving the `nazimlaw.com` zone
+dynamically.
 
 ## 5. Health checks
 
@@ -182,6 +231,7 @@ curl -fsS http://127.0.0.1:8082/api/health
 | Database unhealthy | `docker compose logs database`; check disk space and `.env` passwords |
 | 502 from Nginx | confirm Traccar listens on `127.0.0.1:8082` (`curl http://127.0.0.1:8082/api/health`) |
 | WebSocket live view fails | confirm the `Upgrade`/`Connection` proxy headers in the Nginx site |
+| HTTPS fails / certificate error | `certbot certificates`; confirm the `/.well-known/acme-challenge/` location still serves `/var/www/html`; run `certbot renew --dry-run` |
 | Container exits on start | check `docker compose logs <service>`; verify pinned tags were pulled |
 
 ## 13. Security notes

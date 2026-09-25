@@ -121,16 +121,23 @@ def check_nginx() -> None:
     text = path.read_text(encoding="utf-8")
     required = {
         "server_name fleet.nazimlaw.com;": "serves fleet.nazimlaw.com",
-        "listen 443 ssl http2;": "listens on 443 with TLS",
+        "listen 443 ssl;": "listens on 443 with TLS",
         "listen 80;": "redirects plain HTTP",
+        "location ^~ /.well-known/acme-challenge/": "serves ACME HTTP-01 challenges",
+        "root /var/www/html;": "uses the shared ACME webroot",
         "proxy_pass http://127.0.0.1:8082;": "proxies to loopback Traccar",
         "proxy_set_header Upgrade $http_upgrade;": "supports WebSocket upgrade",
         "proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;": "sets X-Forwarded-For",
         "proxy_set_header X-Forwarded-Proto https;": "sets X-Forwarded-Proto",
-        "/etc/nginx/ssl/nazimlaw.com-origin.pem": "uses the host origin certificate",
+        "/etc/letsencrypt/live/fleet.nazimlaw.com/fullchain.pem": "uses the Let's Encrypt fullchain",
+        "/etc/letsencrypt/live/fleet.nazimlaw.com/privkey.pem": "uses the Let's Encrypt private key",
+        "include /etc/letsencrypt/options-ssl-nginx.conf;": "includes the host TLS options",
+        "ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;": "uses the host dhparams",
     }
     for needle, label in required.items():
         require(needle in text, f"nginx template {label}")
+    # The legacy shared origin certificate path must not be referenced.
+    require("/etc/nginx/ssl/" not in text, "nginx template has no legacy /etc/nginx/ssl reference")
     # `map` must not collide with other included sites.
     require("$fleet_conn_upgrade" in text, "nginx template uses a namespaced upgrade variable")
     require(text.count("{") == text.count("}"), "nginx template braces are balanced")
