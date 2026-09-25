@@ -16,3 +16,9 @@ __pycache__/
 
 # Agent scratch
 .openclaw/
+
+# Vendored upstream Traccar source (issue #11) is preserved byte-for-byte.
+# Re-include the non-secret upstream files that the secret/runtime patterns
+# above would otherwise drop (verified by scripts/check-deployment-artifacts.py).
+!vendor/traccar-web/.env
+!vendor/traccar-web/src/resources/images/data/

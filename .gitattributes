@@ -1,0 +1,6 @@
+# Vendored upstream Traccar source (issue #11) is imported byte-for-byte.
+# Upstream files legitimately contain trailing whitespace and other patterns
+# that the repository's whitespace errors would otherwise flag on diff; those
+# files must not be rewritten. Exempt them from whitespace checks so
+# `git diff --check` stays meaningful for Fleet Cloud-owned files only.
+vendor/** -whitespace
