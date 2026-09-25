@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE properties SYSTEM "http://java.sun.com/dtd/properties.dtd">
+<!--
+  fleet-cloud Traccar configuration template (issue #3).
+
+  This file is a REFERENCE TEMPLATE and is NOT mounted by compose.yaml.
+
+  The default, credential-free deployment path is environment-variable
+  configuration (see compose.yaml and docs/RUNBOOK.md): the official image
+  reads CONFIG_USE_ENVIRONMENT_VARIABLES=true and maps config key "a.b.c"
+  to environment variable "A_B_C". Database credentials are therefore never
+  written into any file that could be committed.
+
+  Use this template only when you need a setting that has no environment
+  variable, or when you prefer an explicit conf/traccar.xml. If you mount it,
+  keep database.password out of the file and instead rely on the
+  DATABASE_PASSWORD environment variable override so no secret is committed.
+-->
+<properties>
+
+    <!-- Allow environment variables to override the entries below. -->
+    <entry key='config.useEnvironmentVariables'>true</entry>
+
+    <!-- MySQL (production database; driver ships with Traccar). -->
+    <entry key='database.driver'>com.mysql.cj.jdbc.Driver</entry>
+    <entry key='database.url'>jdbc:mysql://database:3306/traccar?zeroDateTimeBehavior=round&amp;serverTimezone=UTC&amp;allowPublicKeyRetrieval=true&amp;useSSL=false&amp;allowMultiQueries=true&amp;autoReconnect=true&amp;useUnicode=yes&amp;characterEncoding=UTF-8&amp;sessionVariables=sql_mode=''</entry>
+    <entry key='database.maxPoolSize'>10</entry>
+
+    <!-- Web interface / API behind the Nginx reverse proxy. -->
+    <entry key='web.origin'>https://fleet.nazimlaw.com</entry>
+    <entry key='web.timeout'>300000</entry>
+    <entry key='web.sessionTimeout'>3600</entry>
+
+    <!-- Times are stored in UTC: the JDBC URL above sets serverTimezone=UTC
+         and the container runs with TZ=UTC. Set decoder.timezone only if a
+         specific device reports local instead of UTC timestamps. -->
+
+    <!-- Safe logging: stdout plus daily rotating file, no SQL logging. -->
+    <entry key='logger.console'>true</entry>
+    <entry key='logger.level'>info</entry>
+    <entry key='logger.file'>./logs/tracker-server.log</entry>
+    <entry key='logger.rotate'>true</entry>
+    <entry key='logger.rotate.interval'>day</entry>
+    <entry key='logger.queries'>false</entry>
+
+</properties>

@@ -1,0 +1,144 @@
+# fleet-cloud — repository-owned deployment foundation (issue #3).
+#
+# Documentation: docs/RUNBOOK.md
+# Decisions:     docs/adr/0002-traccar-deployment-foundation.md
+#
+# Rules enforced by this file and by scripts/check-deployment-artifacts.py:
+#   * every image is pinned to an immutable release tag — never `latest`;
+#   * runtime secrets come from a root-owned deployment file
+#     (default /srv/fleet-cloud/.env) supplied via `--env-file`; nothing
+#     secret is committed here (see .env.example);
+#   * MySQL is never published to the host;
+#   * the Traccar web/API port binds to host loopback only and is fronted by
+#     Nginx (ops/nginx/fleet.nazimlaw.com.conf);
+#   * no tracker protocol port (5000–5300) is published by default.
+name: fleet-cloud
+
+services:
+  database:
+    image: mysql:8.0.43
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?set MYSQL_DATABASE in /srv/fleet-cloud/.env}
+      MYSQL_USER: ${MYSQL_USER:?set MYSQL_USER in /srv/fleet-cloud/.env}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in /srv/fleet-cloud/.env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in /srv/fleet-cloud/.env}
+      TZ: UTC
+    # No `ports:` on purpose: MySQL is reachable only from the traccar
+    # service over the dedicated fleet-cloud network.
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - internal
+    healthcheck:
+      # `mysqladmin ping` exits 0 while the server is up, even on access
+      # denied, so no credentials are needed here (and none are exposed).
+      test:
+        - CMD
+        - mysqladmin
+        - ping
+        - -h
+        - 127.0.0.1
+        - --silent
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+          pids: 512
+
+  traccar:
+    image: traccar/traccar:6.15.3-alpine
+    restart: unless-stopped
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      # Upstream-supported Docker configuration: environment variables override
+      # conf/traccar.xml. Config key "a.b.c" becomes "A_B_C"; set the switch
+      # below to enable it. See docs/RUNBOOK.md.
+      CONFIG_USE_ENVIRONMENT_VARIABLES: "true"
+      TZ: UTC
+
+      # --- MySQL (least-privilege application user) ---
+      DATABASE_DRIVER: com.mysql.cj.jdbc.Driver
+      DATABASE_URL: jdbc:mysql://database:3306/${MYSQL_DATABASE}?zeroDateTimeBehavior=round&serverTimezone=UTC&allowPublicKeyRetrieval=true&useSSL=false&allowMultiQueries=true&autoReconnect=true&useUnicode=yes&characterEncoding=UTF-8&sessionVariables=sql_mode=''
+      DATABASE_USER: ${MYSQL_USER}
+      DATABASE_PASSWORD: ${MYSQL_PASSWORD}
+      DATABASE_MAX_POOL_SIZE: "10"
+
+      # --- Public base URL / CORS origin (TLS terminates at Nginx) ---
+      WEB_ORIGIN: ${TRACCAR_WEB_ORIGIN:?set TRACCAR_WEB_ORIGIN in /srv/fleet-cloud/.env}
+      WEB_TIMEOUT: "300000"
+      WEB_SESSION_TIMEOUT: ${TRACCAR_WEB_SESSION_TIMEOUT:-3600}
+
+      # --- Safe logging: stdout for `docker compose logs`, daily rotation ---
+      LOGGER_CONSOLE: "true"
+      LOGGER_LEVEL: ${TRACCAR_LOGGER_LEVEL:-info}
+      LOGGER_FILE: ./logs/tracker-server.log
+      LOGGER_ROTATE: "true"
+      LOGGER_ROTATE_INTERVAL: day
+      LOGGER_QUERIES: "false"
+    ports:
+      # Web UI/API on host loopback only. Public access is HTTPS via Nginx.
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - traccar-data:/opt/traccar/data
+      - traccar-media:/opt/traccar/media
+      - traccar-logs:/opt/traccar/logs
+    networks:
+      - internal
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - -q
+        - --spider
+        - http://127.0.0.1:8082/api/health
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 1g
+          pids: 256
+
+networks:
+  internal:
+    name: fleet-cloud-net
+    driver: bridge
+    driver_opts:
+      # Any port published on this network defaults to host loopback.
+      com.docker.network.bridge.host_binding_ipv4: "127.0.0.1"
+
+volumes:
+  db-data:
+    name: fleet-cloud-db-data
+  traccar-data:
+    name: fleet-cloud-traccar-data
+  traccar-media:
+    name: fleet-cloud-traccar-media
+  traccar-logs:
+    name: fleet-cloud-traccar-logs
