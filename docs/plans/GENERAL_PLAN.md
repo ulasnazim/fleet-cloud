@@ -1,8 +1,8 @@
 # General Product Plan: Fleet Cloud long-term vision
 
-Status: **long-term general product vision — not release-one scope.**
+Status: **long-term general product vision.**
 Origin: Birand Kilinc's original Fleet Cloud product proposal.
-Recorded by: Forge (issue #13), for owner review by PR.
+Recorded by: Forge (issue #13), for review by PR.
 
 ## Purpose and status of this document
 
@@ -12,27 +12,32 @@ intended to grow into over its lifetime. It is a planning and orientation
 document only.
 
 **This is a long-term vision, not a commitment that all capabilities belong in
-release one.** Nothing here is a release commitment, a schedule, an estimate or
-a claim that any unbuilt capability already exists. The proposal describes
-intended product direction. Delivery is decided separately, capability by
-capability, against the reduced release-one scope.
+any single release.** Nothing here is a release commitment, a schedule, an
+estimate or a claim that any unbuilt capability already exists. The proposal
+describes intended product direction.
 
-### Relationship to release-one scope
+### Relationship to what is currently delivered
 
-The current, committed product scope is deliberately smaller than the vision in
-this document. Release one is the **deployment foundation** only: upstream
+The **current delivered baseline** is the deployment foundation: upstream
 **Traccar 6.15.3** (Apache-2.0) with a dedicated **MySQL 8.0.43** database,
 served over HTTPS at `https://fleet.nazimlaw.com`, plus the isolated
 **OpenCloud 7.2.4** file-sharing surface at `https://files.nazimlaw.com` for the
-two named users. See `AGENTS.md` and `README.md` for the release-one facts, and
+two named users. This is the current repository state, not the agreed release-one
+product scope. See `AGENTS.md` and `README.md` for the current facts, and
 `docs/adr/0002-traccar-deployment-foundation.md` and
 `docs/adr/0003-opencloud-file-sharing.md` for the decisions behind them.
 
-Everything beyond that foundation — including every product area listed below
-— is **future direction to be scoped, prioritised and approved separately**. The
-listing order below follows the proposal; it is not a priority order or a
-sequence of delivery. A capability appearing here does not mean it is planned
-for release one, funded, staffed or scheduled.
+### Relationship to release-one scope
+
+**Release-one scope is defined separately and is a selected subset of this
+vision.** It is not fixed by this document, and this document does not assert
+that every product area listed below lies outside release one. Which of these
+areas (and which capabilities within them) belong in release one is decided and
+recorded in the appropriate planning and decision documents, not here.
+
+The listing order below follows the proposal; it is not a priority order or a
+sequence of delivery. A capability appearing here does not mean it is funded,
+staffed or scheduled.
 
 ## Proposed operational flow
 
@@ -179,7 +184,9 @@ API keys, integrations, data access and multi-tenant architecture.
 
 ## Governance
 
-Changes to the release-one scope are decisions for the owner, recorded in
-`AGENTS.md` and, where architectural, in an ADR under `docs/adr/`. This document
-may be revised to keep the long-term vision accurate, but it does not by itself
-authorize any capability, implementation, dependency or infrastructure change.
+Scope decisions — including which parts of this vision belong to a given release
+— must be recorded in the appropriate planning and decision documents (for
+example, update `AGENTS.md` and, where architectural, add or amend an ADR under
+`docs/adr/`). This document may be revised to keep the long-term vision accurate,
+but it does not by itself authorize any capability, implementation, dependency or
+infrastructure change.
