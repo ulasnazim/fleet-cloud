@@ -33,7 +33,8 @@ product scope. See `AGENTS.md` and `README.md` for the current facts, and
 vision.** It is not fixed by this document, and this document does not assert
 that every product area listed below lies outside release one. Which of these
 areas (and which capabilities within them) belong in release one is decided and
-recorded in the appropriate planning and decision documents, not here.
+recorded in the appropriate planning and decision documents, not here. The
+proposed release-one subset is recorded in [`Phase_1.md`](Phase_1.md).
 
 The listing order below follows the proposal; it is not a priority order or a
 sequence of delivery. A capability appearing here does not mean it is funded,
